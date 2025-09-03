@@ -86,7 +86,10 @@ public class Main {
 
     private static void runQuickFIXJConsumer(String queuePath, int threadCount) {
         logger.info("Starting QuickFIX/J consumer: queue={}, threads={}", queuePath, threadCount);
-        // TODO: Implement QuickFIXJConsumer class
-        logger.warn("QuickFIX/J consumer not yet implemented");
+        java.nio.file.Path path = java.nio.file.Path.of(queuePath);
+        try (com.fix.performance.QuickFIXJConsumer consumer =
+                new com.fix.performance.QuickFIXJConsumer(threadCount)) {
+            consumer.consume(path);
+        }
     }
 }
