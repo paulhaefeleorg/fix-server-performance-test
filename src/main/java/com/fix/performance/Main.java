@@ -6,23 +6,22 @@ import org.apache.logging.log4j.Logger;
 /**
  * Main entry point for FIX performance testing application.
  * 
- * This application compares two FIX.4.4 message processing approaches:
- * 1. Flyweight/off-heap processing on a single pinned thread
- * 2. QuickFIX/J parsing with thread pool
+ * This application compares two FIX.4.4 message processing approaches: 1. Flyweight/off-heap
+ * processing on a single pinned thread 2. QuickFIX/J parsing with thread pool
  */
 public class Main {
     private static final Logger logger = LogManager.getLogger(Main.class);
 
     public static void main(String[] args) {
         logger.info("FIX Performance Test Application Starting...");
-        
+
         if (args.length == 0) {
             printUsage();
             return;
         }
 
         String command = args[0].toLowerCase();
-        
+
         switch (command) {
             case "generate" -> {
                 if (args.length < 3) {
@@ -70,8 +69,13 @@ public class Main {
 
     private static void runGenerator(String queuePath, long messageCount) {
         logger.info("Starting FIX message generator: queue={}, count={}", queuePath, messageCount);
-        // TODO: Implement Generator class
-        logger.warn("Generator not yet implemented");
+        com.fix.performance.generator.FixMessageGenerator gen =
+                new com.fix.performance.generator.FixMessageGenerator();
+        java.nio.file.Path path = java.nio.file.Path.of(queuePath);
+        com.fix.performance.generator.GenerationResult res =
+                gen.generate(path, messageCount, System.nanoTime(), "SENDER", "TARGET");
+        logger.info("Generation done: total={}, nos={}, cancels={}", res.totalMessages(),
+                res.nosCount(), res.cancelCount());
     }
 
     private static void runFlyweightConsumer(String queuePath, boolean enableMetrics) {

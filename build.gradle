@@ -44,6 +44,19 @@ application {
 
 tasks.named('test') {
     useJUnitPlatform()
+    jvmArgs(
+        '--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED',
+        '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED',
+        '--add-exports=java.base/jdk.internal.ref=ALL-UNNAMED',
+        '--add-exports=java.base/sun.nio.ch=ALL-UNNAMED',
+        '--add-exports=jdk.unsupported/sun.misc=ALL-UNNAMED',
+        '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
+        '--add-opens=java.base/java.io=ALL-UNNAMED',
+        '--add-opens=java.base/java.nio=ALL-UNNAMED',
+        '--add-opens=java.base/java.util=ALL-UNNAMED'
+    )
 }
 
 // Configure JVM options for performance testing
@@ -53,7 +66,18 @@ run {
         '-XX:MaxGCPauseMillis=200',
         '-XX:+UnlockExperimentalVMOptions',
         '-XX:+UseJVMCICompiler',
-        '-Xmx4g'
+        '-Xmx4g',
+        '--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED',
+        '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED',
+        '--add-exports=java.base/jdk.internal.ref=ALL-UNNAMED',
+        '--add-exports=java.base/sun.nio.ch=ALL-UNNAMED',
+        '--add-exports=jdk.unsupported/sun.misc=ALL-UNNAMED',
+        '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
+        '--add-opens=java.base/java.io=ALL-UNNAMED',
+        '--add-opens=java.base/java.nio=ALL-UNNAMED',
+        '--add-opens=java.base/java.util=ALL-UNNAMED'
     ]
 }
 
