@@ -1,0 +1,91 @@
+# .cursorrules
+project:
+  name: "fix-bench"
+  language: "java"
+  jdk: "21"
+  build: "gradle"
+  goals:
+    - Generate raw FIX.4.4 messages, append to Chronicle Queue.
+    - Two consumers reading the same queue:
+      1) Flyweight/off-heap single pinned thread
+      2) QuickFIX/J + thread pool
+    - Measure throughput + latency (HdrHistogram). Keep GC minimal in flyweight.
+  non_goals:
+    - No frameworks beyond Chronicle/OpenHFT, QFJ, HdrHistogram.
+    - No Spring, no Lombok, no async logging.
+  constraints:
+    - Minimize heap allocations on hot path (flyweight).
+    - Prefer direct/off-heap buffers.
+    - Code must compile and run via `./gradlew run --args="..."`.
+    - Keep dependencies pinned; no SNAPSHOTs.
+
+style:
+  java:
+    version: 21
+    formatting: "GoogleStyle"
+    nullability: "avoid @Nullable unless needed"
+    logging: "Log4j2 utilizing per class static loggers to stdout and rolling files"
+    exceptions: "fail fast; propagate with context"
+    tests: "JUnit5; small, fast, deterministic"
+
+libraries:
+  allow:
+    - net.openhft:chronicle-queue
+    - net.openhft:chronicle-bytes
+    - net.openhft:chronicle-wire
+    - net.openhft:affinity
+    - org.hdrhistogram:HdrHistogram
+    - org.quickfixj:quickfixj-core
+  deny:
+    - lombok
+    - spring*
+    - slf4j-logback (not needed here)
+
+security:
+  file_write:
+    restrict_to:
+      - ./data
+      - ./metrics
+      - ./logs
+  network:
+    forbid_outbound: true
+
+review_checklist:
+  - Build.gradle pins Java 21 and dependencies listed above.
+  - CLI entrypoints exist:
+    - `generate`, `consume-flyweight`, `consume-qfj`
+  - Flyweight loop performs zero String allocations.
+  - QFJ path uses a fixed-size pool and backpressure.
+  - HdrHistogram prints p50/p99/p99.9 and M/s.
+  - Scripts in /scripts run end-to-end successfully.
+
+tasks_behavior:
+  small_commits: true
+  ask_before_overwrite: true
+  keep_context_files_open:
+    - README.md
+    - .cursorrules
+    - build.gradle
+    - src/main/java/**/*
+
+# .cursorrules
+
+# .cursorrules
+# Project-specific AI coding rules for Cursor
+
+rules:
+  # --- Environment assumptions ---
+  - description: Always assume the development and build environment runs inside a Linux container (Ubuntu) on WSL2 with Docker.
+  - description: Prefer generating Dockerfiles and docker-compose definitions instead of local shell scripts for builds and services.
+  - description: When suggesting system packages or commands, use apt-based package management.
+
+  # --- Dev Containers ---
+  - description: When creating environment configs, generate a devcontainer.json that builds from the project’s Dockerfile.
+  - description: Ensure volume mounts and ports are included if needed.
+
+  # --- Coding practices ---
+  - description: Use modern Java (>=21) features unless otherwise specified..
+  - description: Write tests using JUnit 5.
+
+  # --- General style ---
+  - description: Add inline comments to generated code only when clarity is needed, avoid over-commenting.

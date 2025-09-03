@@ -1,0 +1,69 @@
+{
+    "name": "FIX Performance Test Environment (Root)",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "."
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "vscjava.vscode-java-pack",
+                "vscjava.vscode-gradle",
+                "redhat.java",
+                "vscjava.vscode-java-debug",
+                "vscjava.vscode-java-test",
+                "vscjava.vscode-maven",
+                "ms-vscode.vscode-json"
+            ],
+            "settings": {
+                "java.configuration.updateBuildConfiguration": "automatic",
+                "java.compile.nullAnalysis.mode": "automatic",
+                "java.format.settings.url": "https://raw.githubusercontent.com/google/styleguide/gh-pages/eclipse-java-google-style.xml",
+                "java.format.settings.profile": "GoogleStyle",
+                "java.saveActions.organizeImports": true,
+                "java.format.enabled": true,
+                "editor.formatOnSave": true,
+                "editor.codeActionsOnSave": {
+                    "source.organizeImports": "explicit"
+                }
+            }
+        }
+    },
+    "postCreateCommand": "echo 'Dev container ready!' && whoami && id && gradle --version",
+    "mounts": [
+        "source=${localWorkspaceFolder}/data,target=/workspaces/fix-server-performance-test/data,type=bind,consistency=cached",
+        "source=${localWorkspaceFolder}/metrics,target=/workspaces/fix-server-performance-test/metrics,type=bind,consistency=cached",
+        "source=${localWorkspaceFolder}/logs,target=/workspaces/fix-server-performance-test/logs,type=bind,consistency=cached"
+    ],
+    "workspaceFolder": "/workspaces/fix-server-performance-test",
+    "remoteUser": "root",
+    "containerEnv": {
+        "JAVA_HOME": "/opt/java/openjdk",
+        "GRADLE_OPTS": "-Xmx2g -XX:+UseG1GC",
+        "JAVA_OPTS": "-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+    },
+    "forwardPorts": [
+        8080,
+        8081,
+        8082
+    ],
+    "portsAttributes": {
+        "8080": {
+            "label": "FIX Generator",
+            "onAutoForward": "notify"
+        },
+        "8081": {
+            "label": "Flyweight Consumer",
+            "onAutoForward": "notify"
+        },
+        "8082": {
+            "label": "QuickFIX/J Consumer",
+            "onAutoForward": "notify"
+        }
+    },
+    "shutdownAction": "stopContainer"
+}

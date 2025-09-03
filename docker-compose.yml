@@ -1,0 +1,33 @@
+services:
+  fix-performance-test:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    container_name: fix-performance-test
+    volumes:
+      - .:/workspaces/fix-server-performance-test
+      - ./data:/workspaces/fix-server-performance-test/data
+      - ./metrics:/workspaces/fix-server-performance-test/metrics
+      - ./logs:/workspaces/fix-server-performance-test/logs
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "8082:8082"
+    environment:
+      - JAVA_HOME=/opt/java/openjdk
+      - GRADLE_OPTS=-Xmx2g -XX:+UseG1GC
+      - JAVA_OPTS=-XX:+UseG1GC -XX:MaxGCPauseMillis=200
+    working_dir: /workspaces/fix-server-performance-test
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+
+  # Optional: Chronicle Queue monitoring service
+  chronicle-monitor:
+    image: eclipse-temurin:21-jdk
+    container_name: chronicle-monitor
+    volumes:
+      - ./data:/data
+    command: /bin/bash -c "apt-get update && apt-get install -y curl && while true; do echo 'Chronicle Queue files:'; ls -la /data/; sleep 30; done"
+    depends_on:
+      - fix-performance-test

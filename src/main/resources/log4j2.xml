@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Appenders>
+        <!-- Console appender -->
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+        </Console>
+        
+        <!-- File appender with rolling -->
+        <RollingFile name="FileAppender" 
+                     fileName="logs/fix-performance.log"
+                     filePattern="logs/fix-performance-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy />
+                <SizeBasedTriggeringPolicy size="100MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+    </Appenders>
+    
+    <Loggers>
+        <!-- Performance-critical loggers with minimal overhead -->
+        <Logger name="com.fix.performance.FlyweightConsumer" level="INFO" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="FileAppender"/>
+        </Logger>
+        
+        <!-- Chronicle Queue logging -->
+        <Logger name="net.openhft.chronicle" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <!-- QuickFIX/J logging -->
+        <Logger name="quickfix" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <!-- Root logger -->
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="FileAppender"/>
+        </Root>
+    </Loggers>
+</Configuration>
