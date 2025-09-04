@@ -80,8 +80,11 @@ public class Main {
 
     private static void runFlyweightConsumer(String queuePath, boolean enableMetrics) {
         logger.info("Starting flyweight consumer: queue={}, metrics={}", queuePath, enableMetrics);
-        // TODO: Implement FlyweightConsumer class
-        logger.warn("Flyweight consumer not yet implemented");
+        java.nio.file.Path path = java.nio.file.Path.of(queuePath);
+        try (com.fix.performance.FlyweightConsumer consumer =
+                new com.fix.performance.FlyweightConsumer()) {
+            consumer.consume(path);
+        }
     }
 
     private static void runQuickFIXJConsumer(String queuePath, int threadCount) {
