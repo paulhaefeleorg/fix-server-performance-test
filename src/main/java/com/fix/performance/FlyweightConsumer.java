@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.fix.performance.flyweight.FlyweightOrder;
+import com.fix.performance.flyweight.Order;
 import com.fix.performance.metrics.HistogramUtil;
 import com.fix.performance.queue.ChronicleQueueService;
 import net.openhft.affinity.AffinityLock;
@@ -20,7 +20,7 @@ import net.openhft.chronicle.bytes.BytesStore;
 public final class FlyweightConsumer implements AutoCloseable {
     private static final Logger logger = LogManager.getLogger(FlyweightConsumer.class);
 
-    private final Map<Long, FlyweightOrder> clOrdIdToOrder = new ConcurrentHashMap<>();
+    private final Map<Long, Order> clOrdIdToOrder = new ConcurrentHashMap<>();
     // Reusable scratch to minimize garbage while creating small Strings (e.g., ClOrdID, Symbol)
     private final StringBuilder scratch = new StringBuilder(64);
     // Reusable ranges to avoid per-call allocations
@@ -31,7 +31,7 @@ public final class FlyweightConsumer implements AutoCloseable {
     private final MutableRange r44 = new MutableRange();
     private final MutableRange r41 = new MutableRange();
 
-    public Map<Long, FlyweightOrder> getOpenOrdersMap() {
+    public Map<Long, Order> getOpenOrdersMap() {
         return clOrdIdToOrder;
     }
 
@@ -57,31 +57,103 @@ public final class FlyweightConsumer implements AutoCloseable {
     }
 
     void processBytes(Bytes<?> bytes) {
-        long start = bytes.readPosition();
-        long limit = start + bytes.readRemaining();
+        long pos = bytes.readPosition();
+        long limit = pos + bytes.readRemaining();
         BytesStore<?, ?> store = bytes.bytesStore();
 
-        if (!findTag(store, start, limit, 35, r35))
+        byte msgType = 0;
+        boolean haveMsgType = false;
+        long clOrdId = Long.MIN_VALUE;
+        long origClOrdId = Long.MIN_VALUE;
+        int quantity = Integer.MIN_VALUE;
+        long priceCents = Long.MIN_VALUE;
+        long symStart = -1;
+        long symEnd = -1;
+
+        while (pos < limit) {
+            // Parse tag number until '='; skip invalid tokens to next SOH
+            int tag = 0;
+            boolean hasDigit = false;
+            while (pos < limit) {
+                int b = store.readUnsignedByte(pos++);
+                if (b == '=')
+                    break;
+                int d = b - '0';
+                if (d >= 0 && d <= 9) {
+                    tag = tag * 10 + d;
+                    hasDigit = true;
+                } else {
+                    // Skip to end of this field
+                    while (pos < limit && store.readUnsignedByte(pos++) != 1) {}
+                    hasDigit = false;
+                    break;
+                }
+            }
+
+            long valStart = pos;
+            while (pos < limit && store.readUnsignedByte(pos) != 1)
+                pos++;
+            long valEnd = pos;
+            if (pos < limit)
+                pos++; // skip SOH
+
+            if (!hasDigit)
+                continue;
+
+            switch (tag) {
+                case 35: // MsgType
+                    if (valEnd > valStart) {
+                        msgType = (byte) store.readUnsignedByte(valStart);
+                        haveMsgType = true;
+                    }
+                    break;
+                case 11: // ClOrdID
+                    clOrdId = parseLong(store, valStart, valEnd);
+                    break;
+                case 41: // OrigClOrdID
+                    origClOrdId = parseLong(store, valStart, valEnd);
+                    break;
+                case 55: // Symbol
+                    symStart = valStart;
+                    symEnd = valEnd;
+                    break;
+                case 38: // OrderQty
+                    quantity = parseInt(store, valStart, valEnd);
+                    break;
+                case 44: // Price
+                    priceCents = parsePriceCents(store, valStart, valEnd);
+                    break;
+                default:
+                    break;
+            }
+
+            // Early exit when we have all required fields for the message type
+            if (haveMsgType) {
+                if (msgType == 'D' && clOrdId != Long.MIN_VALUE && symStart != -1
+                        && quantity != Integer.MIN_VALUE && priceCents != Long.MIN_VALUE) {
+                    break;
+                }
+                if (msgType == 'F' && origClOrdId != Long.MIN_VALUE) {
+                    break;
+                }
+            }
+        }
+
+        if (!haveMsgType)
             return;
-        byte mt = store.readByte(r35.start);
-        if (mt == 'D') {
-            if (!findTag(store, start, limit, 11, r11) || !findTag(store, start, limit, 55, r55)
-                    || !findTag(store, start, limit, 38, r38)
-                    || !findTag(store, start, limit, 44, r44))
+
+        if (msgType == 'D') {
+            if (clOrdId == Long.MIN_VALUE || symStart == -1 || quantity == Integer.MIN_VALUE
+                    || priceCents == Long.MIN_VALUE)
                 return;
-            String clStr = asciiSlice(store, r11.start, r11.end);
-            long cl = parseLongAscii(clStr);
-            String sym = dedupeSymbol(asciiSlice(store, r55.start, r55.end));
-            int qty = parseInt(store, r38.start, r38.end);
-            long priceCents = parsePriceCents(store, r44.start, r44.end);
-            FlyweightOrder ord = acquireOrder();
-            ord.set(sym, qty, priceCents);
-            clOrdIdToOrder.put(cl, ord);
-        } else if (mt == 'F') {
-            if (!findTag(store, start, limit, 41, r41))
+            String sym = dedupeSymbol(asciiSlice(store, symStart, symEnd));
+            Order ord = acquireOrder();
+            ord.set(sym, quantity, priceCents);
+            clOrdIdToOrder.put(clOrdId, ord);
+        } else if (msgType == 'F') {
+            if (origClOrdId == Long.MIN_VALUE)
                 return;
-            long orig = parseLongAscii(asciiSlice(store, r41.start, r41.end));
-            FlyweightOrder removed = clOrdIdToOrder.remove(orig);
+            Order removed = clOrdIdToOrder.remove(origClOrdId);
             if (removed != null)
                 releaseOrder(removed);
         }
@@ -97,16 +169,16 @@ public final class FlyweightConsumer implements AutoCloseable {
         }
     }
 
-    private final java.util.ArrayDeque<FlyweightOrder> pool = new java.util.ArrayDeque<>(1024);
+    private final java.util.ArrayDeque<Order> pool = new java.util.ArrayDeque<>(1024);
     private final java.util.concurrent.ConcurrentHashMap<String, String> symbolCache =
             new java.util.concurrent.ConcurrentHashMap<>();
 
-    private FlyweightOrder acquireOrder() {
-        FlyweightOrder ord = pool.pollFirst();
-        return ord != null ? ord : new FlyweightOrder();
+    private Order acquireOrder() {
+        Order ord = pool.pollFirst();
+        return ord != null ? ord : new Order();
     }
 
-    private void releaseOrder(FlyweightOrder ord) {
+    private void releaseOrder(Order ord) {
         // Optionally clear fields if needed; keep it simple to reduce cost
         if (pool.size() < 8192)
             pool.addFirst(ord);
@@ -126,6 +198,22 @@ public final class FlyweightConsumer implements AutoCloseable {
             v = v * 10 + (c - '0');
         }
         return v;
+    }
+
+    private static long parseLong(BytesStore<?, ?> store, long s, long e) {
+        long v = 0;
+        boolean neg = false;
+        for (long i = s; i < e; i++) {
+            int b = store.readUnsignedByte(i);
+            if (b == '-') {
+                neg = true;
+                continue;
+            }
+            int d = b - '0';
+            if (d >= 0 && d <= 9)
+                v = v * 10 + d;
+        }
+        return neg ? -v : v;
     }
 
     private String asciiSlice(BytesStore<?, ?> store, long start, long end) {

@@ -9,7 +9,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import com.fix.performance.fix.FixMessageBuilder;
-import com.fix.performance.flyweight.FlyweightOrder;
+import com.fix.performance.flyweight.Order;
 import com.fix.performance.queue.ChronicleQueueService;
 
 public class FlyweightConsumerTest {
@@ -71,7 +71,7 @@ public class FlyweightConsumerTest {
             assertFalse(map.containsKey(1L));
             assertTrue(map.containsKey(2L));
             assertEquals(1, map.size());
-            FlyweightOrder ord = map.get(2L);
+            Order ord = map.get(2L);
             assertEquals("MSFT", ord.symbol);
             assertEquals(200, ord.quantity);
             assertEquals(23456, ord.priceCents);

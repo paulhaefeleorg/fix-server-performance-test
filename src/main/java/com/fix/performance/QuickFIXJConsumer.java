@@ -11,6 +11,7 @@ import org.HdrHistogram.Recorder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.fix.performance.metrics.HistogramUtil;
+import com.fix.performance.flyweight.Order;
 import com.fix.performance.queue.ChronicleQueueService;
 import quickfix.DataDictionary;
 import quickfix.Message;
@@ -26,7 +27,7 @@ public final class QuickFIXJConsumer implements AutoCloseable {
     private static final Logger logger = LogManager.getLogger(QuickFIXJConsumer.class);
 
     private final ExecutorService[] stripes;
-    private final Map<String, Message> clOrdIdToMessage;
+    private final Map<String, Order> clOrdIdToOrder;
     private final DataDictionary dictionary;
     private final Recorder recorder = new Recorder(10_000_000_000L, 3);
 
@@ -37,7 +38,7 @@ public final class QuickFIXJConsumer implements AutoCloseable {
         for (int i = 0; i < threadCount; i++) {
             this.stripes[i] = Executors.newSingleThreadExecutor();
         }
-        this.clOrdIdToMessage = new ConcurrentHashMap<>();
+        this.clOrdIdToOrder = new ConcurrentHashMap<>();
         // Use built-in FIX44 dictionary from QFJ
         try {
             this.dictionary = new DataDictionary("FIX44.xml");
@@ -46,8 +47,8 @@ public final class QuickFIXJConsumer implements AutoCloseable {
         }
     }
 
-    public Map<String, Message> getOpenOrdersMap() {
-        return clOrdIdToMessage;
+    public Map<String, Order> getOpenOrdersMap() {
+        return clOrdIdToOrder;
     }
 
     public void consume(Path queuePath) {
@@ -89,14 +90,44 @@ public final class QuickFIXJConsumer implements AutoCloseable {
             String msgType = msg.getHeader().getString(MsgType.FIELD);
             if (MsgType.ORDER_SINGLE.equals(msgType)) {
                 String cl = msg.getString(ClOrdID.FIELD);
-                clOrdIdToMessage.put(cl, msg);
+                Order ord = convertToOrder(msg);
+                clOrdIdToOrder.put(cl, ord);
             } else if (MsgType.ORDER_CANCEL_REQUEST.equals(msgType)) {
                 String orig = msg.getString(41); // OrigClOrdID
-                clOrdIdToMessage.remove(orig);
+                clOrdIdToOrder.remove(orig);
             }
         } catch (Exception e) {
             logger.error("Failed to apply message", e);
         }
+    }
+
+    private static Order convertToOrder(Message msg) throws Exception {
+        String symbol = msg.getString(55);
+        int qty = msg.getInt(38);
+        // Price may be decimal; convert to cents similar to flyweight
+        long priceCents = parsePriceCents(msg.getString(44));
+        Order ord = new Order();
+        ord.set(symbol, qty, priceCents);
+        return ord;
+    }
+
+    private static long parsePriceCents(String priceStr) {
+        long dollars = 0;
+        long cents = 0;
+        boolean frac = false;
+        int fracDigits = 0;
+        boolean neg = false;
+        for (int i = 0; i < priceStr.length(); i++) {
+            char c = priceStr.charAt(i);
+            if (c == '-') { neg = true; continue; }
+            if (c == '.') { frac = true; continue; }
+            int d = c - '0';
+            if (d < 0 || d > 9) continue;
+            if (!frac) dollars = dollars * 10 + d; else if (fracDigits < 2) { cents = cents * 10 + d; fracDigits++; }
+        }
+        while (fracDigits < 2) { cents *= 10; fracDigits++; }
+        long total = dollars * 100 + cents;
+        return neg ? -total : total;
     }
 
     private void processMessageWithTiming(Message msg) {
