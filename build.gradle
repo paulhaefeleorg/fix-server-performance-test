@@ -65,7 +65,6 @@ run {
         '-XX:+UseG1GC',
         '-XX:MaxGCPauseMillis=200',
         '-XX:+UnlockExperimentalVMOptions',
-        '-XX:+UseJVMCICompiler',
         '-Xmx4g',
         '--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED',
         '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED',

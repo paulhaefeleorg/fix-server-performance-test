@@ -7,8 +7,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.HdrHistogram.Recorder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import com.fix.performance.metrics.HistogramUtil;
 import com.fix.performance.queue.ChronicleQueueService;
 import quickfix.DataDictionary;
 import quickfix.Message;
@@ -26,6 +28,7 @@ public final class QuickFIXJConsumer implements AutoCloseable {
     private final ExecutorService[] stripes;
     private final Map<String, Message> clOrdIdToMessage;
     private final DataDictionary dictionary;
+    private final Recorder recorder = new Recorder(10_000_000_000L, 3);
 
     public QuickFIXJConsumer(int threadCount) {
         if (threadCount <= 0)
@@ -54,6 +57,12 @@ public final class QuickFIXJConsumer implements AutoCloseable {
         }
     }
 
+    public void consume(Path queuePath, Path metricsOut) {
+        consume(queuePath);
+        shutdownStripes();
+        HistogramUtil.writeHistogram(metricsOut, recorder, "QuickFIXJ");
+    }
+
     private void submitWork(String fixString) {
         // Parse once to route to a per-key single-thread stripe ensuring ordering per ClOrdID
         try {
@@ -69,7 +78,7 @@ public final class QuickFIXJConsumer implements AutoCloseable {
                 return;
             }
             int idx = Math.floorMod(key.hashCode(), stripes.length);
-            stripes[idx].submit(() -> applyMessage(msg));
+            stripes[idx].submit(() -> processMessageWithTiming(msg));
         } catch (Exception e) {
             logger.error("Failed to route FIX: {}", fixString, e);
         }
@@ -90,13 +99,27 @@ public final class QuickFIXJConsumer implements AutoCloseable {
         }
     }
 
+    private void processMessageWithTiming(Message msg) {
+        final long startNs = System.nanoTime();
+        try {
+            applyMessage(msg);
+        } finally {
+            final long endNs = System.nanoTime();
+            recorder.recordValue(endNs - startNs);
+        }
+    }
+
     @Override
     public void close() {
+        shutdownStripes();
+    }
+
+    private void shutdownStripes() {
         for (ExecutorService es : stripes)
             es.shutdown();
         for (ExecutorService es : stripes) {
             try {
-                es.awaitTermination(10, TimeUnit.SECONDS);
+                es.awaitTermination(30, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

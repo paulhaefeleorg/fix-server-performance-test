@@ -7,7 +7,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.fix.performance.flyweight.FlyweightOrder;
+import com.fix.performance.metrics.HistogramUtil;
 import com.fix.performance.queue.ChronicleQueueService;
+import net.openhft.affinity.AffinityLock;
 import net.openhft.chronicle.bytes.Bytes;
 import net.openhft.chronicle.bytes.BytesStore;
 
@@ -33,12 +35,25 @@ public final class FlyweightConsumer implements AutoCloseable {
         return clOrdIdToOrder;
     }
 
+    // Metrics recording (ns)
+    private final org.HdrHistogram.Recorder recorder =
+            new org.HdrHistogram.Recorder(10_000_000_000L, 3);
+
     public void consume(Path queuePath) {
         Objects.requireNonNull(queuePath, "queuePath");
-        try (ChronicleQueueService svc = new ChronicleQueueService(queuePath)) {
-            // Use zero-copy Bytes view; parse in-place per message
-            svc.forEachBytes(this::processBytes);
+        try (AffinityLock lock = AffinityLock.acquireLock();
+                ChronicleQueueService svc = new ChronicleQueueService(queuePath)) {
+            svc.forEachBytes(this::processBytesWithTiming);
         }
+    }
+
+    public void consume(Path queuePath, Path metricsOut) {
+        Objects.requireNonNull(queuePath, "queuePath");
+        try (AffinityLock lock = AffinityLock.acquireLock();
+                ChronicleQueueService svc = new ChronicleQueueService(queuePath)) {
+            svc.forEachBytes(this::processBytesWithTiming);
+        }
+        HistogramUtil.writeHistogram(metricsOut, recorder, "Flyweight");
     }
 
     void processBytes(Bytes<?> bytes) {
@@ -69,6 +84,16 @@ public final class FlyweightConsumer implements AutoCloseable {
             FlyweightOrder removed = clOrdIdToOrder.remove(orig);
             if (removed != null)
                 releaseOrder(removed);
+        }
+    }
+
+    private void processBytesWithTiming(Bytes<?> bytes) {
+        final long startNs = System.nanoTime();
+        try {
+            processBytes(bytes);
+        } finally {
+            final long endNs = System.nanoTime();
+            recorder.recordValue(endNs - startNs);
         }
     }
 

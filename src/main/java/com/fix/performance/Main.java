@@ -32,18 +32,19 @@ public class Main {
             }
             case "flyweight" -> {
                 if (args.length < 2) {
-                    logger.error("Usage: flyweight <queue_path> [enable_metrics]");
+                    logger.error("Usage: flyweight <queue_path> [metrics_path]");
                     return;
                 }
-                boolean enableMetrics = args.length > 2 ? Boolean.parseBoolean(args[2]) : true;
-                runFlyweightConsumer(args[1], enableMetrics);
+                String metricsPath = args.length > 2 ? args[2] : null;
+                runFlyweightConsumer(args[1], metricsPath);
             }
             case "quickfixj" -> {
                 if (args.length < 3) {
-                    logger.error("Usage: quickfixj <queue_path> <thread_count>");
+                    logger.error("Usage: quickfixj <queue_path> <thread_count> [metrics_path]");
                     return;
                 }
-                runQuickFIXJConsumer(args[1], Integer.parseInt(args[2]));
+                String metricsPath = args.length > 3 ? args[3] : null;
+                runQuickFIXJConsumer(args[1], Integer.parseInt(args[2]), metricsPath);
             }
             default -> {
                 logger.error("Unknown command: {}", command);
@@ -58,13 +59,16 @@ public class Main {
         System.out.println();
         System.out.println("Commands:");
         System.out.println("  generate <queue_path> <message_count>  - Generate FIX messages");
-        System.out.println("  flyweight <queue_path> [enable_metrics] - Run flyweight consumer");
-        System.out.println("  quickfixj <queue_path> <thread_count>  - Run QuickFIX/J consumer");
+        System.out.println("  flyweight <queue_path> [metrics_path]  - Run flyweight consumer");
+        System.out.println(
+                "  quickfixj <queue_path> <thread_count> [metrics_path]  - Run QuickFIX/J consumer");
         System.out.println();
         System.out.println("Examples:");
         System.out.println("  java -jar fix-performance-test.jar generate ./data/fix.q 2000000");
-        System.out.println("  java -jar fix-performance-test.jar flyweight ./data/fix.q true");
-        System.out.println("  java -jar fix-performance-test.jar quickfixj ./data/fix.q 8");
+        System.out.println(
+                "  java -jar fix-performance-test.jar flyweight ./data/fix.q ./metrics/fly.txt");
+        System.out.println(
+                "  java -jar fix-performance-test.jar quickfixj ./data/fix.q 8 ./metrics/qfj.txt");
     }
 
     private static void runGenerator(String queuePath, long messageCount) {
@@ -78,21 +82,29 @@ public class Main {
                 res.nosCount(), res.cancelCount());
     }
 
-    private static void runFlyweightConsumer(String queuePath, boolean enableMetrics) {
-        logger.info("Starting flyweight consumer: queue={}, metrics={}", queuePath, enableMetrics);
+    private static void runFlyweightConsumer(String queuePath, String metricsPath) {
+        logger.info("Starting flyweight consumer: queue={}, metricsPath={}", queuePath,
+                metricsPath);
         java.nio.file.Path path = java.nio.file.Path.of(queuePath);
         try (com.fix.performance.FlyweightConsumer consumer =
                 new com.fix.performance.FlyweightConsumer()) {
-            consumer.consume(path);
+            java.nio.file.Path m =
+                    java.nio.file.Path.of(metricsPath != null ? metricsPath : "./metrics/fly.txt");
+            consumer.consume(path, m);
         }
     }
 
-    private static void runQuickFIXJConsumer(String queuePath, int threadCount) {
-        logger.info("Starting QuickFIX/J consumer: queue={}, threads={}", queuePath, threadCount);
+    private static void runQuickFIXJConsumer(String queuePath, int threadCount,
+            String metricsPath) {
+        logger.info("Starting QuickFIX/J consumer: queue={}, threads={}, metricsPath={}", queuePath,
+                threadCount, metricsPath);
         java.nio.file.Path path = java.nio.file.Path.of(queuePath);
         try (com.fix.performance.QuickFIXJConsumer consumer =
                 new com.fix.performance.QuickFIXJConsumer(threadCount)) {
-            consumer.consume(path);
+            if (metricsPath == null)
+                consumer.consume(path);
+            else
+                consumer.consume(path, java.nio.file.Path.of(metricsPath));
         }
     }
 }
