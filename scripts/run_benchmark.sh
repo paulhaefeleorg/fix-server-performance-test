@@ -15,6 +15,8 @@ METRICS_DIR="./metrics"
 Q_PATH="$DATA_DIR/fix.q"
 QFJ_METRICS="$METRICS_DIR/qfj.txt"
 FLY_METRICS="$METRICS_DIR/fly.txt"
+QFJ_GC="$METRICS_DIR/gc-qfj.txt"
+FLY_GC="$METRICS_DIR/gc-fly.txt"
 
 mkdir -p "$DATA_DIR" "$METRICS_DIR"
 
@@ -47,9 +49,39 @@ printf "%-12s %s\n" "Consumer" "Metrics"
 printf "%-12s %s\n" "--------" "-------"
 printf "%-12s %s\n" "QuickFIXJ" "$QFJ_METRICS"
 sed -n '1,999p' "$QFJ_METRICS" | sed 's/^/  /'
+if [ -f "$QFJ_GC" ]; then
+  echo "  GC:"
+  sed -n '1,999p' "$QFJ_GC" | sed 's/^/    /'
+  # Peak memory (JMX)
+  QFJ_PEAK_BYTES=$(sed -n '/^mem_peaks_jmx=/,/^mem_peaks_tracked=/p' "$QFJ_GC" | grep 'usedBytes=' | sed -E 's/.*usedBytes=([0-9]+).*/\1/' | sort -n | tail -n1)
+  if [ -n "${QFJ_PEAK_BYTES:-}" ]; then
+    QFJ_PEAK_MB=$(awk "BEGIN {printf \"%.1f\", $QFJ_PEAK_BYTES/1024/1024}")
+    echo "    PeakUsed(JMX): ${QFJ_PEAK_MB} MB"
+  fi
+  # Peak memory (Tracked)
+  QFJ_TR_PEAK_BYTES=$(sed -n '/^mem_peaks_tracked=/,$p' "$QFJ_GC" | grep 'usedBytes=' | sed -E 's/.*usedBytes=([0-9]+).*/\1/' | sort -n | tail -n1)
+  if [ -n "${QFJ_TR_PEAK_BYTES:-}" ]; then
+    QFJ_TR_PEAK_MB=$(awk "BEGIN {printf \"%.1f\", $QFJ_TR_PEAK_BYTES/1024/1024}")
+    echo "    PeakUsed(Tracked): ${QFJ_TR_PEAK_MB} MB"
+  fi
+fi
 echo
 printf "%-12s %s\n" "Flyweight" "$FLY_METRICS"
 sed -n '1,999p' "$FLY_METRICS" | sed 's/^/  /'
+if [ -f "$FLY_GC" ]; then
+  echo "  GC:"
+  sed -n '1,999p' "$FLY_GC" | sed 's/^/    /'
+  FLY_PEAK_BYTES=$(sed -n '/^mem_peaks_jmx=/,/^mem_peaks_tracked=/p' "$FLY_GC" | grep 'usedBytes=' | sed -E 's/.*usedBytes=([0-9]+).*/\1/' | sort -n | tail -n1)
+  if [ -n "${FLY_PEAK_BYTES:-}" ]; then
+    FLY_PEAK_MB=$(awk "BEGIN {printf \"%.1f\", $FLY_PEAK_BYTES/1024/1024}")
+    echo "    PeakUsed(JMX): ${FLY_PEAK_MB} MB"
+  fi
+  FLY_TR_PEAK_BYTES=$(sed -n '/^mem_peaks_tracked=/,$p' "$FLY_GC" | grep 'usedBytes=' | sed -E 's/.*usedBytes=([0-9]+).*/\1/' | sort -n | tail -n1)
+  if [ -n "${FLY_TR_PEAK_BYTES:-}" ]; then
+    FLY_TR_PEAK_MB=$(awk "BEGIN {printf \"%.1f\", $FLY_TR_PEAK_BYTES/1024/1024}")
+    echo "    PeakUsed(Tracked): ${FLY_TR_PEAK_MB} MB"
+  fi
+fi
 echo "=================================================="
 
 echo "Done."

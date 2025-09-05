@@ -4,10 +4,12 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.fix.performance.flyweight.Order;
 import com.fix.performance.metrics.HistogramUtil;
+import com.fix.performance.metrics.GcTracker;
 import com.fix.performance.queue.ChronicleQueueService;
 import net.openhft.affinity.AffinityLock;
 import net.openhft.chronicle.bytes.Bytes;
@@ -38,6 +40,9 @@ public final class FlyweightConsumer implements AutoCloseable {
     // Metrics recording (ns)
     private final org.HdrHistogram.Recorder recorder =
             new org.HdrHistogram.Recorder(10_000_000_000L, 3);
+    private static final int WARMUP_SKIP = 100;
+    private final AtomicLong processedCounter = new AtomicLong(0);
+    final GcTracker gcTracker = new GcTracker().start();
 
     public void consume(Path queuePath) {
         Objects.requireNonNull(queuePath, "queuePath");
@@ -165,7 +170,10 @@ public final class FlyweightConsumer implements AutoCloseable {
             processBytes(bytes);
         } finally {
             final long endNs = System.nanoTime();
-            recorder.recordValue(endNs - startNs);
+            long prev = processedCounter.getAndIncrement();
+            if (prev >= WARMUP_SKIP) {
+                recorder.recordValue(endNs - startNs);
+            }
         }
     }
 

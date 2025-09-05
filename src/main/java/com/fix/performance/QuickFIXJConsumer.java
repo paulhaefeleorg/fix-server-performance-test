@@ -7,11 +7,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import org.HdrHistogram.Recorder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.fix.performance.metrics.HistogramUtil;
 import com.fix.performance.flyweight.Order;
+import com.fix.performance.metrics.GcTracker;
 import com.fix.performance.queue.ChronicleQueueService;
 import quickfix.DataDictionary;
 import quickfix.Message;
@@ -30,6 +32,9 @@ public final class QuickFIXJConsumer implements AutoCloseable {
     private final Map<String, Order> clOrdIdToOrder;
     private final DataDictionary dictionary;
     private final Recorder recorder = new Recorder(10_000_000_000L, 3);
+    private static final int WARMUP_SKIP = 100;
+    private final AtomicLong processedCounter = new AtomicLong(0);
+    final GcTracker gcTracker = new GcTracker().start();
 
     public QuickFIXJConsumer(int threadCount) {
         if (threadCount <= 0)
@@ -136,13 +141,17 @@ public final class QuickFIXJConsumer implements AutoCloseable {
             applyMessage(msg);
         } finally {
             final long endNs = System.nanoTime();
-            recorder.recordValue(endNs - startNs);
+            long prev = processedCounter.getAndIncrement();
+            if (prev >= WARMUP_SKIP) {
+                recorder.recordValue(endNs - startNs);
+            }
         }
     }
 
     @Override
     public void close() {
         shutdownStripes();
+        gcTracker.stop();
     }
 
     private void shutdownStripes() {

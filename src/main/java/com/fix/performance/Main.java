@@ -91,6 +91,33 @@ public class Main {
             java.nio.file.Path m =
                     java.nio.file.Path.of(metricsPath != null ? metricsPath : "./metrics/fly.txt");
             consumer.consume(path, m);
+            try {
+                var snap = consumer.gcTracker.snapshot();
+                java.nio.file.Path out = java.nio.file.Path.of("./metrics/gc-fly.txt");
+                if (out.getParent() != null)
+                    java.nio.file.Files.createDirectories(out.getParent());
+                StringBuilder sb = new StringBuilder();
+                sb.append("gc_count=").append(snap.count).append('\n');
+                sb.append("gc_total_pause_ms=").append(snap.totalPauseMs).append('\n');
+                sb.append("gc_breakdown=\n");
+                for (var e : snap.countByType.entrySet()) {
+                    long ms = snap.totalPauseMsByType.getOrDefault(e.getKey(), 0L);
+                    sb.append("  ").append(e.getKey()).append(':').append(e.getValue()).append(" (ms=")
+                            .append(ms).append(")\n");
+                }
+                sb.append("mem_peaks_jmx=\n");
+                for (var e : snap.jmxPeakUsedByPool.entrySet()) {
+                    sb.append("  ").append(e.getKey()).append(" usedBytes=").append(e.getValue())
+                            .append('\n');
+                }
+                sb.append("mem_peaks_tracked=\n");
+                for (var e : snap.trackedMaxUsedByPool.entrySet()) {
+                    sb.append("  ").append(e.getKey()).append(" usedBytes=").append(e.getValue())
+                            .append('\n');
+                }
+                java.nio.file.Files.writeString(out, sb.toString());
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -105,6 +132,33 @@ public class Main {
                 consumer.consume(path);
             else
                 consumer.consume(path, java.nio.file.Path.of(metricsPath));
+            try {
+                var snap = consumer.gcTracker.snapshot();
+                java.nio.file.Path out = java.nio.file.Path.of("./metrics/gc-qfj.txt");
+                if (out.getParent() != null)
+                    java.nio.file.Files.createDirectories(out.getParent());
+                StringBuilder sb = new StringBuilder();
+                sb.append("gc_count=").append(snap.count).append('\n');
+                sb.append("gc_total_pause_ms=").append(snap.totalPauseMs).append('\n');
+                sb.append("gc_breakdown=\n");
+                for (var e : snap.countByType.entrySet()) {
+                    long ms = snap.totalPauseMsByType.getOrDefault(e.getKey(), 0L);
+                    sb.append("  ").append(e.getKey()).append(':').append(e.getValue()).append(" (ms=")
+                            .append(ms).append(")\n");
+                }
+                sb.append("mem_peaks_jmx=\n");
+                for (var e : snap.jmxPeakUsedByPool.entrySet()) {
+                    sb.append("  ").append(e.getKey()).append(" usedBytes=").append(e.getValue())
+                            .append('\n');
+                }
+                sb.append("mem_peaks_tracked=\n");
+                for (var e : snap.trackedMaxUsedByPool.entrySet()) {
+                    sb.append("  ").append(e.getKey()).append(" usedBytes=").append(e.getValue())
+                            .append('\n');
+                }
+                java.nio.file.Files.writeString(out, sb.toString());
+            } catch (Exception ignored) {
+            }
         }
     }
 }
